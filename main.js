@@ -139,12 +139,13 @@ function init() {
   halfSpheres = [];
 
   renderer = new THREE.WebGLRenderer();
-  renderer.setSize( window.innerWidth * 0.95, window.innerHeight * 0.95);
+  renderer.setSize( window.innerWidth * 1.0, window.innerHeight);
 
   effect = new AsciiEffect( renderer, ' \`\',;"%&@#', { invert: true } );
-  effect.setSize( window.innerWidth * 0.95, window.innerHeight * 0.95);
+  effect.setSize( window.innerWidth * 1.0, window.innerHeight );
+
+  effect.domElement.style.backgroundColor = 'black';
   effect.domElement.style.color = 'lightgreen';
-  effect.domElement.style.marginLeft = '2.5%';
   document.body.appendChild( effect.domElement );
 
   window.addEventListener( 'resize', onWindowResize );
@@ -177,8 +178,8 @@ function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
 
-  renderer.setSize( window.innerWidth * 0.95, window.innerHeight * 0.95 );
-  effect.setSize( window.innerWidth * 0.95, window.innerHeight * 0.95 );
+  renderer.setSize( window.innerWidth * 0.95, window.innerHeight  );
+  effect.setSize( window.innerWidth * 0.95, window.innerHeight );
 }
 
 function animate() {
