@@ -9,7 +9,7 @@ class Sphere {
       new THREE.SphereGeometry(100, 10, 10), 
       new THREE.MeshPhongMaterial({ flatShading: true, side: THREE.DoubleSide })
     );
-    scene.add(this.mesh);
+    targetMeshes.add(this.mesh);
     // now pick a random function to describe my motion
     this.x0 = Math.random() * 1400 - 700;
     do {
@@ -39,7 +39,7 @@ class Sphere {
     return Math.abs(this.t - 0.5) < 0.01;
   }
   kill () {
-    scene.remove(this.mesh);
+    targetMeshes.remove(this.mesh);
   }
 }
 
@@ -104,19 +104,27 @@ class ChoppedSphere {
   }
 }
 
-let camera, scene, renderer, effect;
-let spheres, halfSpheres;
-let lastRegen = Date.now();
+var camera, scene, renderer, effect;
+var mouse, raycaster, targetMeshes;
+var spheres, halfSpheres;
+var lastRegen = Date.now();
 
 init();
 animate();
 
 function init() {
   camera = new THREE.PerspectiveCamera( 80, window.innerWidth / window.innerHeight, 1, 1000 );
-  camera.position.set(0,0,500);
+  camera.position.set(0,0, 500);
+
+  // these are used for mouse input
+  raycaster = new THREE.Raycaster();
+  mouse = new THREE.Vector2();
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color( 0, 0, 0 );
+
+  targetMeshes = new THREE.Group();
+  scene.add(targetMeshes);
 
   // add two lights to the scene
   const pointLight1 = new THREE.PointLight( 0xffffff );
@@ -131,23 +139,46 @@ function init() {
   halfSpheres = [];
 
   renderer = new THREE.WebGLRenderer();
-  renderer.setSize( window.innerWidth * 0.9, window.innerHeight * 0.9);
+  renderer.setSize( window.innerWidth * 0.95, window.innerHeight * 0.95);
 
   effect = new AsciiEffect( renderer, ' \`\',;"%&@#', { invert: true } );
-  effect.setSize( window.innerWidth * 0.9, window.innerHeight * 0.9);
+  effect.setSize( window.innerWidth * 0.95, window.innerHeight * 0.95);
   effect.domElement.style.color = 'lightgreen';
-  effect.domElement.style.marginLeft = '5%';
+  effect.domElement.style.marginLeft = '2.5%';
   document.body.appendChild( effect.domElement );
 
   window.addEventListener( 'resize', onWindowResize );
+  window.addEventListener('mousemove', onMouseMove, false);
+}
+
+function onMouseMove(event) {
+  // calculate mouse position in normalized device coordinates
+  // (-1 to +1) for both components
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(targetMeshes.children);
+
+  for (let i = 0; i < intersects.length; i++) {
+    for (let j = 0; j < spheres.length; j++) {
+      if (spheres[j].mesh == intersects[i].object) {
+        let tmp = new ChoppedSphere(spheres[j].start - Date.now(),
+                                    spheres[j].x0,
+                                    spheres[j].xf);
+        spheres[j].kill();
+        spheres[j] = tmp; 
+      }
+    }
+  }
 }
 
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
 
-  renderer.setSize( window.innerWidth * 0.9, window.innerHeight * 0.9 );
-  effect.setSize( window.innerWidth * 0.9, window.innerHeight * 0.9 );
+  renderer.setSize( window.innerWidth * 0.95, window.innerHeight * 0.95 );
+  effect.setSize( window.innerWidth * 0.95, window.innerHeight * 0.95 );
 }
 
 function animate() {
@@ -161,13 +192,6 @@ function render() {
       spheres[i].kill();
       spheres[i] = new Sphere(Date.now() - lastRegen < 500 ? 750 : 0);
       lastRegen = Date.now();
-    }
-    if (spheres[i].isAtPeak) {
-      let tmp = new ChoppedSphere(spheres[i].start - Date.now(),
-                                  spheres[i].x0,
-                                  spheres[i].xf);
-      spheres[i].kill();
-      spheres[i] = tmp; 
     }
     spheres[i].updatePosition();
   }
