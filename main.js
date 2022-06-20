@@ -17,6 +17,9 @@ class Sphere {
     } while (Math.abs(this.xf - this.x0) < 100);
     this.y0 = -700;
     this.yf = 200; // top of arc
+    // now z direction to add a little depth
+    this.z0 = Math.random() * 200 - 100;
+    this.zf = Math.random() * 200 - 100;
     // init position
     this.mesh.position.set(this.x0, this.y0, 0);
   }
@@ -24,6 +27,8 @@ class Sphere {
     if (Date.now() > this.start) {
       this.mesh.position.x = this.t * (this.xf - this.x0) + this.x0;
       this.mesh.position.y = Math.sin(this.t * Math.PI) * (this.yf - this.y0) + this.y0;
+      this.mesh.position.z = this.t * (this.zf - this.z0) + this.z0;
+
       this.mesh.rotation.x = Date.now() * 0.002;
       this.mesh.rotation.y = Date.now() * 0.002;
       this.mesh.rotation.z = Date.now() * 0.002;
@@ -44,7 +49,7 @@ class Sphere {
 }
 
 class ChoppedSphere {
-  constructor (timeOffset, x0, xf) {
+  constructor (timeOffset, x0, xf, z0, zf) {
     this.start = Date.now() + timeOffset;
     this.duration1 = 1500;
     this.duration2 = 1600;
@@ -60,20 +65,27 @@ class ChoppedSphere {
     );
     scene.add(this.mesh2);
     // copy the old parameters
-    this.x0_1 = x0;
-    this.xf_1 = xf;
     this.y0 = -700;
     this.yf_1 = 200; // top of arc
     this.yf_2 = 250;
     // mirror over y axis at point of chop
     const xi = this.t2 * (xf - x0) + x0;
+    this.x0_1 = xi + 1.5 * (x0 - xi);
+    this.xf_1 = xi + 1.5 * (xf - xi);
     this.x0_2 = xi - 1.5 * (x0 - xi);
     this.xf_2 = xi - 1.5 * (xf - xi);
+
+    const zi = this.t2 * (zf - z0) + z0;
+    this.z0_1 = zi + 2 * (z0 - zi);
+    this.zf_1 = zi + 2 * (zf - zi);
+    this.z0_2 = zi - 2 * (z0 - zi);
+    this.zf_2 = zi - 2 * (zf - zi);
     // init position
   }
   updatePosition () {
     this.mesh1.position.x = this.t1 * (this.xf_1 - this.x0_1) + this.x0_1;
     this.mesh1.position.y = Math.sin(this.t1 * Math.PI) * (this.yf_1 - this.y0) + this.y0;
+    this.mesh1.position.z = this.t1 * (this.zf_1 - this.z0_1) + this.z0_1;
 
     this.mesh1.rotation.x = Date.now() * 0.004;
     this.mesh1.rotation.y = Date.now() * 0.004;
@@ -81,6 +93,7 @@ class ChoppedSphere {
 
     this.mesh2.position.x = this.t2 * (this.xf_2 - this.x0_2) + this.x0_2;
     this.mesh2.position.y = Math.sin(this.t2 * Math.PI) * (this.yf_2 - this.y0) + this.y0;
+    this.mesh2.position.z = this.t2 * (this.zf_2 - this.z0_2) + this.z0_2;
 
     this.mesh2.rotation.x = Date.now() * -0.004;
     this.mesh2.rotation.y = Date.now() * -0.004;
@@ -106,8 +119,9 @@ class ChoppedSphere {
 
 var camera, scene, renderer, effect;
 var mouse, raycaster, targetMeshes;
-var spheres, halfSpheres;
-var lastRegen = Date.now();
+var trailMesh, trailBuff, trailPoints, lastFrame;
+var targets;
+var lastRegen; 
 
 init();
 animate();
@@ -135,20 +149,35 @@ function init() {
   pointLight2.position.set( -500, -500, 0 );
   scene.add( pointLight2 );
 
-  spheres = [new Sphere(), new Sphere(750)];
-  halfSpheres = [];
+  targets = [new Sphere(), new Sphere(750)];
+  lastRegen = Date.now() + 750;
 
   renderer = new THREE.WebGLRenderer();
-  renderer.setSize( window.innerWidth * 1.0, window.innerHeight);
+  renderer.setSize(window.innerWidth, window.innerHeight);
 
-  effect = new AsciiEffect( renderer, ' \`\',;"%&@#', { invert: true } );
-  effect.setSize( window.innerWidth * 1.0, window.innerHeight );
+  effect = new AsciiEffect(renderer, ' \`\',;"%&@#', {invert: true});
+  effect.setSize(window.innerWidth, window.innerHeight);
 
+  document.body.appendChild(effect.domElement);
   effect.domElement.style.backgroundColor = 'black';
   effect.domElement.style.color = 'lightgreen';
-  document.body.appendChild( effect.domElement );
 
-  window.addEventListener( 'resize', onWindowResize );
+  // now set up for the mouse trail
+  trailPoints = [
+    new THREE.Vector3(0,0,0), 
+    new THREE.Vector3(0,0,0), 
+    new THREE.Vector3(0,0,0), 
+    new THREE.Vector3(0,0,0), 
+    new THREE.Vector3(0,0,0)];
+
+  console.log(trailPoints);
+
+  trailBuff = new THREE.BufferGeometry().setFromPoints( trailPoints );
+  const lineMat = new THREE.LineBasicMaterial({color: 0xffffff});
+  trailMesh = new THREE.Line (trailBuff, lineMat);
+  scene.add(trailMesh);
+
+  window.addEventListener('resize', onWindowResize);
   window.addEventListener('mousemove', onMouseMove, false);
 }
 
@@ -157,18 +186,27 @@ function onMouseMove(event) {
   // (-1 to +1) for both components
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
+  // update the trail head
+  var vec = new THREE.Vector3(); // create once and reuse
+  vec.set(mouse.x, mouse.y, 1);
+  vec.unproject( camera );
+  vec.sub( camera.position ).normalize();
+  var distance = - camera.position.z / vec.z;
+  trailPoints[0].copy( camera.position ).add( vec.multiplyScalar( distance ) );
+  // raycast into targets
   raycaster.setFromCamera(mouse, camera);
   const intersects = raycaster.intersectObjects(targetMeshes.children);
-
+  // replace intersected targets with chopped sphere
   for (let i = 0; i < intersects.length; i++) {
-    for (let j = 0; j < spheres.length; j++) {
-      if (spheres[j].mesh == intersects[i].object) {
-        let tmp = new ChoppedSphere(spheres[j].start - Date.now(),
-                                    spheres[j].x0,
-                                    spheres[j].xf);
-        spheres[j].kill();
-        spheres[j] = tmp; 
+    for (let j = 0; j < targets.length; j++) {
+      if (targets[j].mesh == intersects[i].object) {
+        let tmp = new ChoppedSphere(targets[j].start - Date.now(),
+                                    targets[j].x0,
+                                    targets[j].xf,
+                                    targets[j].z0,
+                                    targets[j].zf);
+        targets[j].kill();
+        targets[j] = tmp; 
       }
     }
   }
@@ -178,8 +216,8 @@ function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
 
-  renderer.setSize( window.innerWidth * 0.95, window.innerHeight  );
-  effect.setSize( window.innerWidth * 0.95, window.innerHeight );
+  renderer.setSize( window.innerWidth , window.innerHeight  );
+  effect.setSize( window.innerWidth , window.innerHeight );
 }
 
 function animate() {
@@ -189,12 +227,19 @@ function animate() {
 
 function render() {
   for (let i = 0; i < 2; i++) {
-    if (spheres[i].isDone) {
-      spheres[i].kill();
-      spheres[i] = new Sphere(Date.now() - lastRegen < 500 ? 750 : 0);
+    if (targets[i].isDone) {
+      targets[i].kill();
+      targets[i] = new Sphere(Date.now() - lastRegen < 500 ? 750 : 0);
       lastRegen = Date.now();
     }
-    spheres[i].updatePosition();
+    targets[i].updatePosition();
   }
+  // update trail
+  for (let i = 1; i < trailPoints.length; i++) {
+    trailPoints[i].lerp(trailPoints[i - 1], 0.8);
+  }
+  trailBuff.setFromPoints(trailPoints);
+
+  lastFrame = Date.now();
   effect.render( scene, camera );
 }
